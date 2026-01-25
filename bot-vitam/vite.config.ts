@@ -3,9 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// ---------------------------------------------------------
-// RECRÉATION DE __dirname (Obligatoire en "type": "module")
-// ---------------------------------------------------------
+// Recréation de __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -14,17 +12,18 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Maintenant ça va marcher sur Vercel !
+      // 👇 C'EST LA LIGNE QUI MANQUAIT ! 👇
+      "@": path.resolve(__dirname, "./src"),
+      
+      // La correction pour React qu'on avait déjà faite
       react: path.resolve(__dirname, './node_modules/react'),
       'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
     },
   },
   optimizeDeps: {
-    include: ['react-markdown', 'react', 'react-dom'],
+    include: ['react-markdown', 'react', 'react-dom', 'tailwindcss-animate'],
   },
   build: {
-    // Petit bonus : augmente la limite de mémoire au cas où
     chunkSizeWarningLimit: 1600,
   }
 });
-
