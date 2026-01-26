@@ -4,9 +4,6 @@ import ChatBubble from './ChatBubble';
 import ChatWindow from './ChatWindow';
 import type { ChatMessage, Product } from './types';
 
-/**
- * Nettoie une URL qui peut être au format markdown [text](url) ou juste une URL
- */
 const cleanUrl = (url: string | undefined): string => {
   if (!url) return '';
   const markdownMatch = url.match(/\[.*?\]\((.*?)\)/);
@@ -56,10 +53,7 @@ const ChatWidget = () => {
 
     try {
       const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL;
-      
-      if (!webhookUrl) {
-        throw new Error('VITE_N8N_WEBHOOK_URL is not defined');
-      }
+      if (!webhookUrl) throw new Error('VITE_N8N_WEBHOOK_URL is not defined');
 
       const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -70,72 +64,77 @@ const ChatWidget = () => {
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const rawData = await response.json();
-      console.log('Données brutes reçues de n8n:', rawData);
+      const n8nItem = Array.isArray(rawData) ? rawData[0] : rawData;
+      
+      console.log('--- RÉCEPTION N8N ---', n8nItem);
 
-      // --- LOGIQUE DE PARSING INTELLIGENTE ---
-      let finalData = Array.isArray(rawData) ? rawData[0] : rawData;
+      // --- LOGIQUE DE DÉCODAGE RENFORCÉE ---
+      
+      let finalReplyText = "";
+      let finalProducts: any[] = [];
 
-      // 1. Détection : Est-ce que n8n nous a envoyé le JSON sous forme de texte dans un champ 'output' ou 'text' ?
-      // C'est souvent le cas avec les agents IA.
-      const potentialJsonString = finalData.output || finalData.text || (typeof finalData === 'string' ? finalData : null);
+      // 1. Chercher le texte brut renvoyé par l'IA (souvent dans 'output' ou 'text')
+      // C'est là que se cache notre JSON stringifié : "{ "reply": "...", ... }"
+      const aiString = n8nItem.output || n8nItem.text || (typeof n8nItem === 'string' ? n8nItem : "");
 
-      if (typeof potentialJsonString === 'string' && potentialJsonString.trim().startsWith('{')) {
+      let parsedAiJson = null;
+
+      // 2. Essayer de parser ce texte si ça ressemble à du JSON
+      if (typeof aiString === 'string' && aiString.trim().startsWith('{')) {
         try {
-          // On essaie de transformer le texte "{ reply: ... }" en objet réel
-          const parsedJson = JSON.parse(potentialJsonString.trim());
-          // On fusionne pour garder les métadonnées éventuelles
-          finalData = { ...finalData, ...parsedJson };
-          console.log('JSON interne parsé avec succès:', finalData);
+            // Nettoyage préventif (au cas où il y a du markdown ```json autour)
+            const cleanString = aiString.replace(/```json/g, '').replace(/```/g, '').trim();
+            parsedAiJson = JSON.parse(cleanString);
+            console.log('✅ JSON IA détecté et parsé :', parsedAiJson);
         } catch (e) {
-          console.warn("Le texte ressemblait à du JSON mais n'a pas pu être parsé:", e);
+            console.warn('⚠️ Échec du parsing JSON IA', e);
         }
       }
 
-      // --- EXTRACTION DES DONNÉES ---
-      
-      // A. Le Texte (reply)
-      let replyText = finalData.reply || finalData.text || finalData.output || "Je n'ai pas compris la réponse.";
-      // Si replyText est encore un objet (cas rare), on le force en string
-      if (typeof replyText !== 'string') {
-         replyText = JSON.stringify(replyText);
+      // 3. PRISE DE DÉCISION (Le Juge)
+      if (parsedAiJson && parsedAiJson.reply) {
+          // CAS A : L'IA a bien renvoyé notre format JSON strict
+          // On utilise EXCLUSIVEMENT ce qu'il y a dedans.
+          finalReplyText = parsedAiJson.reply;
+          
+          // Si products_cards existe, on prend ça. Sinon rien. 
+          // (On ignore n8nItem.products pour ne pas avoir les doublons non désirés)
+          finalProducts = parsedAiJson.products_cards || [];
+
+      } else {
+          // CAS B : L'IA a répondu en texte normal (ou le parsing a échoué)
+          // On prend le texte brut
+          finalReplyText = aiString;
+          // Et on prend les produits trouvés par n8n (le fallback)
+          finalProducts = n8nItem.products || n8nItem.products_cards || [];
       }
 
-      // B. Les Produits (products_cards)
-      let productsList: Product[] = [];
-      const rawProducts = finalData.products_cards || finalData.products || [];
+      // 4. MAPPING DES PRODUITS (Standardisation)
+      const mappedProducts: Product[] = finalProducts.map((p: any, index: number) => ({
+        id: p.id || `prod-${index}-${Date.now()}`,
+        name: p.name || p.Name || p.Nom || p.title || 'Produit conseillé',
+        // Nettoyage du prix (parfois l'IA met "17,90 €", parfois 17.90)
+        price: p.price || p.Price || p.Prix,
+        image: cleanUrl(p.image || p.Image || p.img),
+        link: cleanUrl(p.link || p.Link || p.productUrl || p.url),
+        productUrl: cleanUrl(p.link || p.Link || p.productUrl || p.url),
+        description: p.description || p.Description,
+        ingredients: Array.isArray(p.ingredients || p.Ingrédients) 
+          ? (p.ingredients || p.Ingrédients) 
+          : (p.ingredients || p.Ingrédients ? [p.ingredients || p.Ingrédients] : [])
+      }));
 
-      if (Array.isArray(rawProducts)) {
-        productsList = rawProducts.map((p: any, index: number) => ({
-          id: p.id || `prod-${index}-${Date.now()}`,
-          // Gestion des noms (Name, Nom, name, ou title)
-          name: p.name || p.Name || p.Nom || p.title || 'Produit conseillé',
-          // Gestion du prix (Price, Prix, price)
-          price: p.price || p.Price || p.Prix,
-          // Gestion de l'image
-          image: cleanUrl(p.image || p.Image || p.img),
-          // Gestion du lien
-          link: cleanUrl(p.link || p.Link || p.productUrl || p.url),
-          productUrl: cleanUrl(p.link || p.Link || p.productUrl || p.url),
-          // Gestion de la description
-          description: p.description || p.Description,
-          // Gestion des ingrédients (parfois une string, parfois un tableau)
-          ingredients: Array.isArray(p.ingredients || p.Ingrédients) 
-            ? (p.ingredients || p.Ingrédients) 
-            : (p.ingredients || p.Ingrédients ? [p.ingredients || p.Ingrédients] : [])
-        }));
-      }
+      console.log('📝 Texte final :', finalReplyText);
+      console.log('🛒 Produits finaux :', mappedProducts);
 
-      // --- MISE À JOUR DU CHAT ---
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: replyText,
-        products: productsList.length > 0 ? productsList : undefined,
+        content: finalReplyText,
+        products: mappedProducts.length > 0 ? mappedProducts : undefined,
         timestamp: new Date(),
       };
       
@@ -143,7 +142,7 @@ const ChatWidget = () => {
 
     } catch (error) {
       console.error('Error calling n8n API:', error);
-      toast.error("Oups, une erreur de communication. Réessayez !");
+      toast.error("Problème de connexion au cerveau du robot.");
     } finally {
       setIsTyping(false);
     }
