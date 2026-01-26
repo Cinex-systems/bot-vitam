@@ -18,6 +18,16 @@ const ChatMessage = ({ message, onAddToCart }: ChatMessageProps) => {
       return children;
   };
 
+  // Normaliser le contenu : s'assurer que c'est une string
+  const contentText = typeof message.content === 'string' 
+    ? message.content 
+    : (message.content ? String(message.content) : '');
+
+  // Debug log pour vérifier le contenu
+  if (isBot && !contentText && message.products && message.products.length > 0) {
+    console.warn('⚠️ Message bot sans texte mais avec produits:', message);
+  }
+
   return (
     <div
       className={cn(
@@ -36,9 +46,14 @@ const ChatMessage = ({ message, onAddToCart }: ChatMessageProps) => {
       {/* Contenu du message */}
       <div className={cn("flex-1 space-y-4", !isBot && "text-right")}>
         
-        {/* 1. LE TEXTE (Important : on vérifie qu'il n'est pas vide) */}
-        {message.content && (
-          <div className={cn("prose prose-sm max-w-none", !isBot && "ml-auto")}>
+        {/* 1. LE TEXTE (Toujours afficher si présent, même avec produits) */}
+        {contentText && contentText.trim() && (
+          <div className={cn(
+            "prose prose-sm max-w-none",
+            !isBot && "ml-auto",
+            // S'assurer que le texte est visible (pas de texte blanc sur fond blanc)
+            isBot ? "text-gray-800" : "text-gray-900"
+          )}>
              <ReactMarkdown
               components={{
                 p: ({ children }) => <p className="mb-2 last:mb-0 text-[13px] leading-relaxed text-gray-800">{safeRender(children)}</p>,
@@ -52,7 +67,7 @@ const ChatMessage = ({ message, onAddToCart }: ChatMessageProps) => {
                 )
               }}
             >
-              {message.content}
+              {contentText}
             </ReactMarkdown>
           </div>
         )}

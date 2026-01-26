@@ -76,40 +76,42 @@ const ChatWidget = () => {
       let finalReplyText = "";
       let finalProducts: any[] = [];
 
-      // 1. Chercher le texte brut renvoyé par l'IA (souvent dans 'output' ou 'text')
-      // C'est là que se cache notre JSON stringifié : "{ "reply": "...", ... }"
-      const aiString = n8nItem.output || n8nItem.text || (typeof n8nItem === 'string' ? n8nItem : "");
-
-      let parsedAiJson = null;
-
-      // 2. Essayer de parser ce texte si ça ressemble à du JSON
-      if (typeof aiString === 'string' && aiString.trim().startsWith('{')) {
-        try {
-            // Nettoyage préventif (au cas où il y a du markdown ```json autour)
-            const cleanString = aiString.replace(/```json/g, '').replace(/```/g, '').trim();
-            parsedAiJson = JSON.parse(cleanString);
-            console.log('✅ JSON IA détecté et parsé :', parsedAiJson);
-        } catch (e) {
-            console.warn('⚠️ Échec du parsing JSON IA', e);
-        }
+      // CAS 1 : Format direct avec reply et products_cards (format actuel de n8n)
+      if (n8nItem.reply && typeof n8nItem.reply === 'string') {
+        console.log('✅ Format direct détecté (reply + products_cards)');
+        finalReplyText = n8nItem.reply;
+        finalProducts = n8nItem.products_cards || [];
       }
+      // CAS 2 : Format avec texte dans output/text qui contient du JSON stringifié
+      else {
+        // 1. Chercher le texte brut renvoyé par l'IA (souvent dans 'output' ou 'text')
+        const aiString = n8nItem.output || n8nItem.text || (typeof n8nItem === 'string' ? n8nItem : "");
 
-      // 3. PRISE DE DÉCISION (Le Juge)
-      if (parsedAiJson && parsedAiJson.reply) {
-          // CAS A : L'IA a bien renvoyé notre format JSON strict
-          // On utilise EXCLUSIVEMENT ce qu'il y a dedans.
-          finalReplyText = parsedAiJson.reply;
-          
-          // Si products_cards existe, on prend ça. Sinon rien. 
-          // (On ignore n8nItem.products pour ne pas avoir les doublons non désirés)
-          finalProducts = parsedAiJson.products_cards || [];
+        let parsedAiJson = null;
 
-      } else {
-          // CAS B : L'IA a répondu en texte normal (ou le parsing a échoué)
-          // On prend le texte brut
-          finalReplyText = aiString;
-          // Et on prend les produits trouvés par n8n (le fallback)
-          finalProducts = n8nItem.products || n8nItem.products_cards || [];
+        // 2. Essayer de parser ce texte si ça ressemble à du JSON
+        if (typeof aiString === 'string' && aiString.trim().startsWith('{')) {
+          try {
+              // Nettoyage préventif (au cas où il y a du markdown ```json autour)
+              const cleanString = aiString.replace(/```json/g, '').replace(/```/g, '').trim();
+              parsedAiJson = JSON.parse(cleanString);
+              console.log('✅ JSON IA détecté et parsé :', parsedAiJson);
+          } catch (e) {
+              console.warn('⚠️ Échec du parsing JSON IA', e);
+          }
+        }
+
+        // 3. PRISE DE DÉCISION (Le Juge)
+        if (parsedAiJson && parsedAiJson.reply) {
+            // CAS A : L'IA a bien renvoyé notre format JSON strict
+            finalReplyText = parsedAiJson.reply;
+            finalProducts = parsedAiJson.products_cards || [];
+        } else {
+            // CAS B : L'IA a répondu en texte normal (ou le parsing a échoué)
+            finalReplyText = aiString;
+            // Et on prend les produits trouvés par n8n (le fallback)
+            finalProducts = n8nItem.products || n8nItem.products_cards || [];
+        }
       }
 
       // 4. MAPPING DES PRODUITS (Standardisation)
@@ -128,15 +130,29 @@ const ChatWidget = () => {
       }));
 
       console.log('📝 Texte final :', finalReplyText);
+      console.log('📏 Longueur du texte :', finalReplyText.length);
       console.log('🛒 Produits finaux :', mappedProducts);
+
+      // Vérification que le texte n'est pas vide
+      if (!finalReplyText || finalReplyText.trim().length === 0) {
+        console.warn('⚠️ ATTENTION : Le texte de réponse est vide !');
+        console.warn('Données reçues complètes:', n8nItem);
+      }
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: finalReplyText,
+        content: finalReplyText || 'Désolé, je n\'ai pas pu générer de réponse.',
         products: mappedProducts.length > 0 ? mappedProducts : undefined,
         timestamp: new Date(),
       };
+      
+      console.log('💬 Message assistant créé :', {
+        content: assistantMessage.content,
+        contentLength: assistantMessage.content.length,
+        hasProducts: !!assistantMessage.products,
+        productsCount: assistantMessage.products?.length || 0
+      });
       
       setMessages(prev => [...prev, assistantMessage]);
 
