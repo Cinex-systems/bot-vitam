@@ -23,7 +23,13 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react-markdown', 'react', 'react-dom', 'tailwindcss-animate'],
   },
+  esbuild: {
+    // Supprime tous les console.log et debugger en production
+    drop: ['console', 'debugger'],
+  },
   build: {
     chunkSizeWarningLimit: 1600,
+    // Désactive les source maps pour la production (sécurité)
+    sourcemap: false,
   }
 });
