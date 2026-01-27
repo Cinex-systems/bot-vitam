@@ -1,11 +1,13 @@
 import { ShoppingCart, User } from 'lucide-react';
 import { useCart } from '@/contexts/CartContext';
 import { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
 const Navbar = () => {
   const { getTotalItems, toggleCart } = useCart();
   const totalItems = getTotalItems();
   const [isAnimating, setIsAnimating] = useState(false);
+  const location = useLocation();
 
   // Animation du badge quand le nombre change
   useEffect(() => {
@@ -21,11 +23,25 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo / Nom du site */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-              <span className="text-lg">🌿</span>
-            </div>
-            <span className="text-xl font-bold text-foreground">Vitam</span>
+          <div className="flex items-center gap-4">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-lg">🌿</span>
+              </div>
+              <span className="text-xl font-bold text-foreground">Vitam</span>
+            </Link>
+            
+            {/* Lien vers la démo */}
+            <Link
+              to="/demo"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                location.pathname === '/demo'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Démo
+            </Link>
           </div>
 
           {/* Section User */}
